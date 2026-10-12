@@ -24,7 +24,7 @@ public class User {
 
     private String name;
 
-    @Indexed(unique = true)
+    @Indexed(unique = true, name = "email")
     private String email;
 
     private String passwordHash;

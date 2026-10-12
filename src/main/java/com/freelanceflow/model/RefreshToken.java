@@ -19,10 +19,10 @@ public class RefreshToken {
     @Id
     private String id;
 
-    @Indexed
+    @Indexed(name = "userId")
     private String userId;
 
-    @Indexed(unique = true)
+    @Indexed(unique = true, name = "token")
     private String token;
 
     private Instant expiresAt;

@@ -19,7 +19,7 @@ public class Message {
     @Id
     private String id;
 
-    @Indexed
+    @Indexed(name = "contractId")
     private String contractId;
 
     private String senderId;

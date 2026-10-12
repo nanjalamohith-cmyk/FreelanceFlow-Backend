@@ -12,6 +12,8 @@ import org.springframework.boot.CommandLineRunner;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.index.Index;
+import org.springframework.data.mongodb.core.index.IndexField;
+import org.springframework.data.mongodb.core.index.IndexInfo;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 
@@ -19,6 +21,7 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.Optional;
 
 @Slf4j
 @Component
@@ -38,33 +41,79 @@ public class DataInitializer implements CommandLineRunner {
     }
 
     private void ensureIndexes() {
+        // users.email (unique)
+        reconcileIndex("users",
+                "email",
+                new Index().named("email").on("email", Sort.Direction.ASC).unique(),
+                List.of("email"),
+                true);
+
+        // jobs.status
+        reconcileIndex("jobs",
+                "status",
+                new Index().named("status").on("status", Sort.Direction.ASC),
+                List.of("status"),
+                false);
+
+        // bids (jobId + freelancerId unique)
+        reconcileIndex("bids",
+                "job_freelancer_idx",
+                new Index().named("job_freelancer_idx")
+                        .on("jobId", Sort.Direction.ASC)
+                        .on("freelancerId", Sort.Direction.ASC)
+                        .unique(),
+                List.of("jobId", "freelancerId"),
+                true);
+
+        // messages.contractId
+        reconcileIndex("messages",
+                "contractId",
+                new Index().named("contractId").on("contractId", Sort.Direction.ASC),
+                List.of("contractId"),
+                false);
+
+        log.info("MongoDB indexes verified and reconciled successfully.");
+    }
+
+    private void reconcileIndex(String collectionName, String indexName, Index indexDefinition, List<String> fieldKeys, boolean requireUnique) {
         try {
-            // users.email (unique)
-            mongoTemplate.indexOps("users").ensureIndex(
-                    new Index().on("email", Sort.Direction.ASC).unique()
-            );
+            List<IndexInfo> existingIndexes = mongoTemplate.indexOps(collectionName).getIndexInfo();
+            Optional<IndexInfo> match = existingIndexes.stream()
+                    .filter(info -> matchesFields(info, fieldKeys))
+                    .findFirst();
 
-            // jobs.status
-            mongoTemplate.indexOps("jobs").ensureIndex(
-                    new Index().on("status", Sort.Direction.ASC)
-            );
-
-            // bids (jobId + freelancerId unique)
-            mongoTemplate.indexOps("bids").ensureIndex(
-                    new Index().on("jobId", Sort.Direction.ASC)
-                            .on("freelancerId", Sort.Direction.ASC)
-                            .unique()
-            );
-
-            // messages.contractId
-            mongoTemplate.indexOps("messages").ensureIndex(
-                    new Index().on("contractId", Sort.Direction.ASC)
-            );
-
-            log.info("MongoDB indexes verified successfully.");
+            if (match.isPresent()) {
+                IndexInfo existing = match.get();
+                if (requireUnique && !existing.isUnique()) {
+                    log.warn("Index for fields {} in collection '{}' exists as '{}' but is not unique. Re-creating unique index.",
+                            fieldKeys, collectionName, existing.getName());
+                    mongoTemplate.indexOps(collectionName).ensureIndex(indexDefinition);
+                } else {
+                    log.info("Reused existing index '{}' for fields {} in collection '{}' (unique={})",
+                            existing.getName(), fieldKeys, collectionName, existing.isUnique());
+                }
+            } else {
+                mongoTemplate.indexOps(collectionName).ensureIndex(indexDefinition);
+                log.info("Created index '{}' for fields {} in collection '{}'",
+                        indexName, fieldKeys, collectionName);
+            }
         } catch (Exception e) {
-            log.warn("Non-fatal: Could not verify indexes: {}", e.getMessage());
+            log.warn("Non-fatal: Could not verify or create index for {} in collection '{}': {}",
+                    fieldKeys, collectionName, e.getMessage());
         }
+    }
+
+    private boolean matchesFields(IndexInfo indexInfo, List<String> expectedFieldKeys) {
+        List<IndexField> fields = indexInfo.getIndexFields();
+        if (fields.size() != expectedFieldKeys.size()) {
+            return false;
+        }
+        for (int i = 0; i < fields.size(); i++) {
+            if (!fields.get(i).getKey().equals(expectedFieldKeys.get(i))) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private void seedAdminUser() {

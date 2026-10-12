@@ -35,7 +35,7 @@ public class Job {
 
     private Instant deadline;
 
-    @Indexed
+    @Indexed(name = "status")
     @Builder.Default
     private JobStatus status = JobStatus.OPEN;
 
