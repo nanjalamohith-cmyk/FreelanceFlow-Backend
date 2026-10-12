@@ -20,6 +20,11 @@ buildNumber.properties
 uploads/*
 !uploads/.gitkeep
 
+# Environment & Secrets
+.env
+.env.*
+!.env.example
+
 # OS
 .DS_Store
 Thumbs.db
